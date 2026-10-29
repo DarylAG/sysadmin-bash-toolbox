@@ -15,13 +15,13 @@ Este proyecto demuestra la implementación práctica de servicios core de TI, pr
 
 | Script | Descripción | Estado |
 | :--- | :--- | :---: |
-| `bacula_server_setup.sh` | Despliega y configura Bacula Server (Director, Storage) con base de datos MariaDB y Webmin. | 🟢 Activo |
-| `bacula_cliente_setup.sh` | Instala Bacula File Daemon y genera los archivos de configuración en el nodo cliente. | 🟢 Activo |
+| `bacula_server_setup.sh` | Despliega y configura Bacula Server (Director, Storage) con base de datos MariaDB y Webmin. | 🟡 En revisión |
+| `bacula_cliente_setup.sh` | Instala Bacula File Daemon y genera los archivos de configuración en el nodo cliente. | 🟡 En revisión |
 | `ddns-kea-bind.sh` | Integra Kea DHCP con BIND9 para actualizaciones dinámicas de DNS (DDNS). | 🟡 En revisión |
-| `setup_ca.sh` | Crea una Autoridad Certificadora (CA) local para emitir certificados TLS/SSL. | 🟢 Activo |
-| `setup_nginx_proftpd_secure.sh` | Despliega un servidor web y un servidor FTP securizados con certificados locales. | 🟢 Activo |
-| `nfs_clonezilla.sh` | Configura un recurso compartido NFS optimizado para almacenar imágenes de Clonezilla. | 🟢 Activo |
-| `instalar_correo.sh` | Automatiza el despliegue del servidor de correo interno. | 🟢 Activo |
+| `setup_ca.sh` | Crea una Autoridad Certificadora (CA) local para emitir certificados TLS/SSL. | 🟡 En revisión |
+| `setup_nginx_proftpd_secure.sh` | Despliega un servidor web y un servidor FTP securizados con certificados locales. | 🟡 En revisión |
+| `nfs_clonezilla.sh` | Configura un recurso compartido NFS optimizado para almacenar imágenes de Clonezilla. | 🟡 En revisión |
+| `instalar_correo.sh` | Automatiza el despliegue del servidor de correo interno. | 🟡 En revisión |
 
 ## ⚙️ Requisitos Previos
 1. Sistema operativo basado en Debian/Ubuntu.
