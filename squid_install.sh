@@ -10,7 +10,6 @@ log_error () {
     echo -e "\e[31m[ERROR]\e[0m $1"
 }
 
-
 recoleccion_variables () {
 
     HTTP_PORT_DEFAULT=3127
@@ -24,11 +23,10 @@ recoleccion_variables () {
     read -r -p "Ingrese la red local (ejemplo: 192.168.1.0/24): " RED_LOCAL
 }
 
-
 instalar_squid () {
     log_info "Instalando Squid..."
     apt-get update && apt upgrade -y
-    apt-get install -y squid iptables
+    apt-get install -y squid squid-openssl iptables
 }
 
 gestion_certificado () {
@@ -107,7 +105,7 @@ ssl_bump bump all
 # ----------------------------------------------------------------------
 maximum_object_size 4 MB
 visible_hostname ${HOSTNAME}
-
+shutdown_lifetime 3 seconds
 EOF
 
 }
@@ -129,3 +127,14 @@ verificar_estado_squid () {
     systemctl status squid --no-pager
 
 }
+
+# ==============================================================================
+# EJECUCIÓN PRINCIPAL
+# ==============================================================================
+recoleccion_variables
+instalar_squid
+gestion_certificado
+inicializar_base_datos
+configurar_squid
+reglas_firewall
+verificar_estado_squid
