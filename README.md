@@ -39,6 +39,7 @@ Por motivos de seguridad, los scripts interactivos ocultan el ingreso de contras
 ```bash
 chmod +x nombre_del_script.sh
 sudo ./nombre_del_script.sh
+```
 Notas de Seguridad
 Ninguna contraseña real de infraestructura, bases de datos o credenciales de Bacula se expone en texto plano en este repositorio.
 
