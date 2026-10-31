@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Autor: [Tu Nombre/Administrador]
+# Autor: Daril Arias
 # Fecha: Octubre 2026
 # Propósito: Automatización de Infraestructura Web (Nginx) y FTP Seguro (ProFTPD)
 # Estándar:  Modelo de arquitectura, seguridad y relaciones cruzadas.

@@ -2,7 +2,7 @@
 # ==============================================================================
 # Autor: Daril Arias
 # Fecha: Octubre 2026
-# Propósito: Automatización del Servidor NFS (Almacenamiento para Clonezilla)
+# Propósito: Automatización del Servidor NFS (Almacenamiento para Clonezilla y DRBL)
 # Estándar:  Modelo de arquitectura, seguridad y relaciones cruzadas.
 # ==============================================================================
 
