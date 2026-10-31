@@ -21,12 +21,12 @@ Antes de iniciar, identifica y sustituye las siguientes variables en los comando
 Configura el nombre del host y asegúrate de que el sistema esté actualizado antes de instalar los paquetes necesarios.
 
 Establecer el nombre de host:
-```
+```bash
 hostnamectl set-hostname <HOSTNAME>
 ```
 
 Actualizar repositorios e instalar Squid y utilidades de firewall:
-```
+```bash
 apt update && apt upgrade -y
 apt install squid iptables squid-openssl -y
 ```
@@ -38,18 +38,18 @@ Para que Squid intercepte tráfico cifrado (HTTPS), debe actuar como una Autorid
 MD
 
 1. Posiciónate en el directorio de certificados de Squid:
-```
+```bash
 mkdir -p /etc/squid/certs
 cd /etc/squid/certs/
 ```
 
 2. Genera el archivo `.pem` concatenando el certificado (`.crt`) y la llave privada (`.key`):
-```
+```bash
 cat <NOMBRE_CA>.crt <NOMBRE_CA>.key > <NOMBRE_CA>.pem
 ```
 
 3. Ajusta los permisos de seguridad (crítico para Squid):
-```
+```bash
 chown -R proxy:proxy /etc/squid/certs
 chmod 755 /etc/squid/certs
 chmod 600 /etc/squid/certs/<NOMBRE_CA>.pem
@@ -60,13 +60,13 @@ chmod 600 /etc/squid/certs/<NOMBRE_CA>.pem
 Squid requiere un directorio para almacenar los certificados generados dinámicamente para cada sitio web.
 
 1. Crea la estructura y asigna permisos:
-```
+```bash
 mkdir -p /var/lib/squid
 chown -R proxy:proxy /var/lib/squid
 ```
 
 2. Inicializa la base de datos `ssl_db` (tamaño ajustado a 4MB):
-```
+```bash
 /usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
 chown -R proxy:proxy /var/lib/squid/ssl_db
 ```
@@ -74,17 +74,63 @@ chown -R proxy:proxy /var/lib/squid/ssl_db
 ## Fase 4: Configuración de Squid (`squid.conf`)
 
 Respalda el archivo de configuración original:
-```
+```bash
 mkdir -p /etc/squid/backup
 cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
 mv /etc/squid/*.bak /etc/squid/backup/
 ```
 
 Edita el archivo de configuración limpio:
-```
+```bash
 nano /etc/squid/squid.conf
 ```
-[[squid.conf]]
+
+```bash
+# ----------------------------------------------------------------------
+# DEFINICIÓN DE REDES Y PUERTOS SEGUROS
+# ----------------------------------------------------------------------
+acl localnet src <RED_LOCAL>    # Define tu red local
+acl Safe_ports port 80          # http
+acl Safe_ports port 443         # https
+acl SSL_ports port 443          # https exclusivo
+
+# Denegar peticiones y CONNECT a puertos no seguros
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+
+# ----------------------------------------------------------------------
+# REGLAS DE CONTROL DE ACCESO (HTTP_ACCESS)
+# ----------------------------------------------------------------------
+http_access allow localhost
+http_access allow localnet
+http_access deny all
+
+# ----------------------------------------------------------------------
+# PUERTOS Y SSL BUMPING (PROXY TRANSPARENTE)
+# ----------------------------------------------------------------------
+# Puerto base para Squid 6+ (evita advertencias)
+http_port <PUERTO_HTTP>
+
+# Intercepción HTTP transparente
+http_port <PUERTO_HTTP_INTERCEPT> intercept
+
+# Intercepción HTTPS transparente con certificados dinámicos
+https_port <PUERTO_HTTPS> intercept ssl-bump generate-host-certificates=on dynamic_cert_mem_cache_size=4MB cert=/etc/squid/certs/<NOMBRE_CA>.pem
+
+# Programa de gestión de base de datos SSL
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
+
+# Reglas de inspección SSL (Paso 1, 2 y 3)
+acl step1 at_step SslBump1
+ssl_bump peek step1
+ssl_bump bump all
+
+# ----------------------------------------------------------------------
+# PARÁMETROS DE RED, CACHÉ Y SISTEMA
+# ----------------------------------------------------------------------
+maximum_object_size 4 MB
+visible_hostname <HOSTNAME>
+```
 
 (Nota: Las reglas `Safe_ports`, definición de redes, reglas de acceso básicas y tamaño de objeto se derivan de la configuración proporcionada. Las directivas de `intercept` y `ssl_bump` han sido agregadas para cumplir con el modo transparente requerido).
 
@@ -93,7 +139,7 @@ nano /etc/squid/squid.conf
 Para que el modo transparente funcione, debes redirigir el tráfico web de los clientes a los puertos de intercepción de Squid.
 
 Aplica las siguientes reglas NAT:
-```
+```bash
 iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port <PUERTO_HTTP>
 iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port <PUERTO_HTTPS>
 ```
@@ -101,12 +147,12 @@ iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port <PUERTO_H
 ## Gestión, Verificación y Troubleshooting
 
 **1. Verificación y Arranque de Servicios:** Siempre valida la sintaxis después de realizar cambios:
-```
+```bash
 squid -k parse
 ```
 
 Si no hay errores fatales, inicializa los directorios de caché y reinicia el servicio:
-```
+```bash
 squid -z
 systemctl restart squid
 systemctl enable squid
@@ -115,7 +161,7 @@ systemctl enable squid
 _Otros comandos útiles:_ `systemctl status squid`, `systemctl stop squid`.
 
 **2. Monitoreo de Logs:** Supervisa el tráfico y los errores en tiempo real:
-```
+```bash
 tail -f /var/log/squid/access.log /var/log/squid/cache.log
 ```
 
@@ -127,7 +173,7 @@ tail -f /var/log/squid/access.log /var/log/squid/cache.log
 
 
 **4. Corrupción de la Base de Datos SSL (`ssl_db`):** Si los clientes experimentan errores de certificado de manera repentina y los logs muestran fallos en `security_file_certgen`, limpia la base de datos:
-```
+```bash
 systemctl stop squid
 rm -rf /var/lib/squid/ssl_db/*
 /usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
