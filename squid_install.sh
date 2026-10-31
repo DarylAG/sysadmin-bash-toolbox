@@ -1,17 +1,44 @@
 #!/bin/bash
+# ==============================================================================
+# Autor: Daril Arias
+# Fecha: Octubre 2026
+# Propósito: Automatizar la instalación y configuración de Squid Proxy 
+#            transparente con inspección HTTPS (SSL Bumping) e inyección 
+#            de reglas de iptables.
+# ==============================================================================
 
 set -euo pipefail
 
+echo "=========================================================="
+echo "   Automatización de Squid Proxy Transparente (SSL)       "
+echo "=========================================================="
+
 log_info () {
+
     echo -e "\e[32m[INFO]\e[0m $1"
+
 }
 
 log_error () {
+
     echo -e "\e[31m[ERROR]\e[0m $1"
+
+}
+
+verificar_privilegios() {
+
+    log_info "Verificando privilegios de administrador..."
+    if [[ $EUID -ne 0 ]]; then
+
+       log_error "Este script requiere privilegios elevados. Ejecútalo como root o usando sudo."
+       exit 1
+
+    fi
 }
 
 recoleccion_variables () {
 
+    log_info "Recolección de variables para la configuración de Squid..."
     HTTP_PORT_DEFAULT=3127
     HTTP_PORT_INTERCEPT_DEFAULT=3128
     HTTPS_PORT_DEFAULT=3129
@@ -21,12 +48,30 @@ recoleccion_variables () {
     read -r -p "Ingrese la ubicacion de la clave privada del servidor proxy: " SERVER_KEY_PATH
     read -r -p "Ingrese la ubicacion de la llave privada de la entidad raiz (CA): " CA_KEY_PATH
     read -r -p "Ingrese la red local (ejemplo: 192.168.1.0/24): " RED_LOCAL
+
+    # Validación de variables vacías
+    if [[ -z "$HOSTNAME" || -z "$CA_CERT_PATH" || -z "$SERVER_CERT_PATH" || -z "$SERVER_KEY_PATH" || -z "$CA_KEY_PATH" || -z "$RED_LOCAL" ]]; then
+        
+        log_error "Todos los campos son obligatorios para configurar el proxy."
+        exit 1
+
+    fi
+
+    # Validación de existencia física de los certificados
+    if [[ ! -f "$CA_CERT_PATH" || ! -f "$SERVER_CERT_PATH" || ! -f "$SERVER_KEY_PATH" || ! -f "$CA_KEY_PATH" ]]; then
+        
+        log_error "Uno o más archivos de certificado no existen en las rutas proporcionadas."
+        exit 1
+
+    fi
 }
 
 instalar_squid () {
-    log_info "Instalando Squid..."
+
+    log_info "Instalando dependencias (Squid, OpenSSL, iptables)..."
     apt-get update && apt upgrade -y
     apt-get install -y squid squid-openssl iptables
+
 }
 
 gestion_certificado () {
@@ -50,8 +95,18 @@ inicializar_base_datos () {
     log_info "Inicializando base de datos..."
     mkdir -p /var/lib/squid
     chown -R proxy:proxy /var/lib/squid
-    /usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
-    chown -R proxy:proxy /var/lib/squid/ssl_db
+    
+    # Prevención de sobreescritura (Idempotencia)
+    if [[ ! -d "/var/lib/squid/ssl_db" ]]; then
+
+        /usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
+        chown -R proxy:proxy /var/lib/squid/ssl_db
+
+    else
+
+        log_info "La base de datos SSL ya existe, omitiendo creación."
+
+    fi
 
 }
 
@@ -59,7 +114,14 @@ configurar_squid () {
     
     log_info "Configurando Squid..."
     mkdir -p /etc/squid/backup
-    cp /etc/squid/squid.conf /etc/squid/backup/squid.conf.bak
+
+    # Solo hacer backup si el archivo original existe
+    if [[ -f /etc/squid/squid.conf ]]; then
+
+        cp /etc/squid/squid.conf /etc/squid/backup/squid.conf.bak
+        
+    fi
+
     cat <<EOF > /etc/squid/squid.conf
 # ----------------------------------------------------------------------
 # DEFINICIÓN DE REDES Y PUERTOS SEGUROS
@@ -124,6 +186,9 @@ verificar_estado_squid () {
     squid -k parse
     systemctl restart squid
     systemctl enable squid
+    echo "=========================================================="
+    echo "¡Configuración de Squid Proxy completada exitosamente!"
+    echo "=========================================================="
     systemctl status squid --no-pager
 
 }
@@ -131,6 +196,7 @@ verificar_estado_squid () {
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
+verificar_privilegios
 recoleccion_variables
 instalar_squid
 gestion_certificado

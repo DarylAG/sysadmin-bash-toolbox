@@ -1,47 +1,103 @@
 #!/bin/bash
-# Script de automatización para Postfix y Dovecot
+# ==============================================================================
+# Autor: Daril Arias
+# Fecha: Octubre 2026
+# Propósito: Automatización, despliegue y configuración segura de Postfix y 
+#            Dovecot para envíos y recepción de correo interno (IMAP/SMTP/SASL).
+# ==============================================================================
 
-# 1. Solicitar variables de entorno
-echo "=== Configuración de Variables ==="
-read -r -p "Dominio principal (ej. dominio.com): " DOMINIO_PRINCIPAL
-read -r -p "Hostname corto (ej. mail): " HOSTNAME_CORREO
-read -r -p "FQDN (ej. mail.dominio.com): " FQDN_CORREO
-read -r -p "IP del Servidor (ej. 192.168.100.2): " IP_SERVIDOR
-read -r -p "IP del Gateway (ej. 192.168.100.254): " IP_GATEWAY
-read -r -p "IP del DNS (ej. 192.168.100.1): " IP_DNS
-read -r -p "Red Local (ej. 192.168.100.0/24): " RED_LOCAL
-read -r -p "Usuario de Correo a crear (ej. juanperez): " USUARIO_CORREO
-read -r -p "Ruta absoluta del certificado del servidor: " RUTA_CERT
-read -r -p "Ruta absoluta de la llave privada del servidor: " RUTA_KEY
-read -r -p "Ruta absoluta del certificado CA (root): " RUTA_CA
+set -euo pipefail
 
-# 2. Preparación del Sistema y Red
-echo "=== Preparando Sistema y Red ==="
-hostnamectl set-hostname "$HOSTNAME_CORREO" 
+log_info() {
 
-cat <<EOF > /etc/hosts
-127.0.0.1       localhost
-127.0.1.1       $FQDN_CORREO    $HOSTNAME_CORREO
+  echo -e "\e[32m[INFO]\e[0m $1"
+
+}
+
+log_error() {
+
+  echo -e "\e[31m[ERROR]\e[0m $1"
+
+}
+
+verificar_privilegios() {
+
+  if [[ $EUID -ne 0 ]]; then
+
+    log_error "Este script requiere privilegios de administrador. Ejecútalo como root o usando sudo."
+    exit 1
+
+  fi
+}
+
+recoleccion_variables() {
+
+  log_info "Configuración de Variables"
+  read -r -p "Dominio principal (ej. dominio.com): " DOMINIO_PRINCIPAL
+  read -r -p "Hostname corto (ej. mail): " HOSTNAME_CORREO
+  read -r -p "FQDN (ej. mail.dominio.com): " FQDN_CORREO
+  read -r -p "IP del Servidor (ej. 192.168.100.2): " IP_SERVIDOR
+  read -r -p "IP del Gateway (ej. 192.168.100.254): " IP_GATEWAY
+  read -r -p "IP del DNS (ej. 192.168.100.1): " IP_DNS
+  read -r -p "Red Local (ej. 192.168.100.0/24): " RED_LOCAL
+  read -r -p "Usuario de Correo a crear (ej. juanperez): " USUARIO_CORREO
+  read -r -s -p "Contraseña para el usuario $USUARIO_CORREO: " PASSWORD_CORREO
+  echo "" # Esto da un salto de línea en la consola después de la contraseña oculta
+  read -r -p "Ruta absoluta del certificado del servidor: " RUTA_CERT
+  read -r -p "Ruta absoluta de la llave privada del servidor: " RUTA_KEY
+  read -r -p "Ruta absoluta del certificado CA (root): " RUTA_CA
+
+  # Validación de variables vacías
+  if [[ -z "$DOMINIO_PRINCIPAL" || -z "$FQDN_CORREO" || -z "$USUARIO_CORREO" || -z "$PASSWORD_CORREO" || -z "$RUTA_CERT" ]]; then
+    log_error "Todos los campos, incluyendo la contraseña y rutas, son obligatorios."
+    exit 1
+  fi
+
+  # Validación de existencia de certificados
+  if [[ ! -f "$RUTA_CERT" || ! -f "$RUTA_KEY" || ! -f "$RUTA_CA" ]]; then
+    log_error "Uno o más archivos de certificado no existen en las rutas proporcionadas."
+    exit 1
+  fi
+  
+}
+
+preparacion_sistema() {
+
+  # 2. Preparación del Sistema y Red
+  log_info "Preparando Sistema y Red"
+  hostnamectl set-hostname "$HOSTNAME_CORREO" 
+
+  cat <<EOF > /etc/hosts
+  127.0.0.1       localhost
+  127.0.1.1       $FQDN_CORREO    $HOSTNAME_CORREO
 EOF
 
-# Actualizar e instalar paquetes base
-apt update && apt upgrade -y 
+}
 
-# 3. Gestión de Certificados SSL/TLS
-echo "=== Copiando Certificados Locales ==="
-cp "$RUTA_CERT" "/etc/ssl/certs/${HOSTNAME_CORREO}.crt"
-cp "$RUTA_KEY" "/etc/ssl/private/${HOSTNAME_CORREO}.key"
-cp "$RUTA_CA" /etc/ssl/certs/ca-root.crt
+actualizar_instalar_paquetes() {
 
-chmod 600 "/etc/ssl/private/${HOSTNAME_CORREO}.key" 
-chown root:root "/etc/ssl/private/${HOSTNAME_CORREO}.key" 
+  # export DEBIAN_FRONTEND=noninteractive
+  log_info "Actualizando e instalando paquetes base"
+  apt update && apt upgrade -y 
+  apt install -y postfix mailutils dovecot-imapd dovecot-pop3d 
 
-# 4. Instalación y Configuración de Postfix
-echo "=== Instalando y configurando Postfix ==="
-apt install -y postfix mailutils #
+}
 
-cp /etc/postfix/main.cf /etc/postfix/main.cf.bak 
-cat <<EOF > /etc/postfix/main.cf
+gestion_certificados () {
+
+  log_info "Copiando Certificados Locales"
+  cp "$RUTA_CERT" "/etc/ssl/certs/${HOSTNAME_CORREO}.crt"
+  cp "$RUTA_KEY" "/etc/ssl/private/${HOSTNAME_CORREO}.key"
+  cp "$RUTA_CA" /etc/ssl/certs/ca-root.crt
+  chmod 600 "/etc/ssl/private/${HOSTNAME_CORREO}.key" 
+  chown root:root "/etc/ssl/private/${HOSTNAME_CORREO}.key" 
+
+}
+
+configuracion_postfix_dovecot() {
+  log_info "Configurando Postfix y Dovecot"
+  cp /etc/postfix/main.cf /etc/postfix/main.cf.bak 
+  cat <<EOF > /etc/postfix/main.cf
 # Nivel de compatibilidad y dominios
 compatibility_level = 3.9
 mydomain = $DOMINIO_PRINCIPAL
@@ -85,8 +141,8 @@ smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, rej
 smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination
 EOF
 
-cp /etc/postfix/master.cf /etc/postfix/master.cf.bak #
-cat <<EOF > /etc/postfix/master.cf
+  cp /etc/postfix/master.cf /etc/postfix/master.cf.bak #
+  cat <<EOF > /etc/postfix/master.cf
 
 smtp      inet  n       -       y       -       -       smtpd
 
@@ -127,12 +183,8 @@ postlog   unix-dgram n  -       n       -       1       postlogd
 
 EOF
 
-# 5. Instalación y Configuración de Dovecot
-echo "=== Instalando y configurando Dovecot ==="
-apt install -y dovecot-imapd dovecot-pop3d 
-
-cp /etc/dovecot/conf.d/10-ssl.conf /etc/dovecot/conf.d/10-ssl.conf.bak #
-cat <<EOF > /etc/dovecot/conf.d/10-ssl.conf
+  cp /etc/dovecot/conf.d/10-ssl.conf /etc/dovecot/conf.d/10-ssl.conf.bak #
+  cat <<EOF > /etc/dovecot/conf.d/10-ssl.conf
 # Requerir SSL y definir rutas de certificados
 ssl = required
 ssl_server_cert_file = /etc/ssl/certs/${HOSTNAME_CORREO}.crt
@@ -143,13 +195,13 @@ ssl_server_ca_file = /etc/ssl/certs/ca-root.crt
 ssl_min_protocol = TLSv1.2
 EOF
 
-cp /etc/dovecot/conf.d/10-auth.conf /etc/dovecot/conf.d/10-auth.conf.bak 
-cat <<EOF > /etc/dovecot/conf.d/10-auth.conf
+  cp /etc/dovecot/conf.d/10-auth.conf /etc/dovecot/conf.d/10-auth.conf.bak 
+  cat <<EOF > /etc/dovecot/conf.d/10-auth.conf
 !include auth-system.conf.ext
 EOF
 
-cp /etc/dovecot/conf.d/10-master.conf /etc/dovecot/conf.d/10-master.conf.bak 
-cat <<EOF > /etc/dovecot/conf.d/10-master.conf
+  cp /etc/dovecot/conf.d/10-master.conf /etc/dovecot/conf.d/10-master.conf.bak 
+  cat <<EOF > /etc/dovecot/conf.d/10-master.conf
 service imap-login {
   inet_listener imap {
 
@@ -224,19 +276,28 @@ service dict {
 
 EOF
 
+}
 
-# 6. Creación de Usuarios y Estructura Maildir
-echo "=== Creando Usuario y Maildir ==="
-useradd -m -s /sbin/nologin -c "Usuario de Correo" "$USUARIO_CORREO" 
-echo "Asignar contraseña para el usuario $USUARIO_CORREO:"
-passwd "$USUARIO_CORREO"
+creacion_usuarios_maildir() {
 
-mkdir -p /home/"$USUARIO_CORREO"/Maildir/{new,cur,tmp} 
-chown -R "$USUARIO_CORREO":"$USUARIO_CORREO" /home/"$USUARIO_CORREO"/Maildir/ 
-chmod -R 700 /home/"$USUARIO_CORREO"/Maildir/
+  log_info "Creando Usuario y Maildir"
+  # Se verifica si el usuario ya existe para evitar errores si el script se corre dos veces
+  if ! id "$USUARIO_CORREO" &>/dev/null; then
+    useradd -m -s /sbin/nologin -c "Usuario de Correo" "$USUARIO_CORREO" 
+    echo "$USUARIO_CORREO:$PASSWORD_CORREO" | chpasswd
 
+    mkdir -p /home/"$USUARIO_CORREO"/Maildir/{new,cur,tmp} 
+    chown -R "$USUARIO_CORREO":"$USUARIO_CORREO" /home/"$USUARIO_CORREO"/Maildir/ 
+    chmod -R 700 /home/"$USUARIO_CORREO"/Maildir/
+  else
+    log_info "El usuario $USUARIO_CORREO ya existe, omitiendo creación."
+  fi
 
-cat <<EOF > /etc/network/interfaces
+}
+
+configuracion_red() {
+
+  cat <<EOF > /etc/network/interfaces
 # The primary network interface
 allow-hotplug enp0s3
 iface enp0s3 inet static
@@ -250,9 +311,38 @@ search $DOMINIO_PRINCIPAL
 nameserver $IP_DNS
 EOF
 
-echo "=== Reiniciando y habilitando servicios ==="
-systemctl restart postfix dovecot 
-systemctl enable postfix dovecot
+}
 
-echo "=== Instalación finalizada ==="
-echo "Puedes comprobar el estado con: systemctl status postfix dovecot"
+habilitar_servicios() {
+
+  log_info "Reiniciando y habilitando servicios Postfix y Dovecot"
+  systemctl restart postfix dovecot 
+  systemctl enable postfix dovecot
+  systemctl restart postfix dovecot 
+  systemctl enable postfix dovecot
+  systemctl status postfix dovecot
+
+}
+
+mensaje_final() {
+
+  echo "=========================================================="
+  echo "¡Configuración de Postfix y Dovecot completada exitosamente!"
+  echo "=========================================================="
+
+}
+
+#========================================================================
+#EJECUCIÓN PRINCIPAL
+#======================================================================== 
+
+verificar_privilegios
+recoleccion_variables
+preparacion_sistema
+actualizar_instalar_paquetes
+gestion_certificados
+configuracion_postfix_dovecot
+creacion_usuarios_maildir
+configuracion_red
+habilitar_servicios
+mensaje_final

@@ -1,26 +1,76 @@
 #!/bin/bash
+# ==============================================================================
 # Autor: Daril Arias
-# Fecha: 10/2026
+# Fecha: Octubre 2026
+# Propósito: Automatizar el despliegue de una Autoridad Certificadora (CA) local 
+#            y estructurar su base de datos para emitir, firmar y gestionar 
+#            certificados TLS/SSL en servicios de infraestructura interna.
+# ==============================================================================
+
+set -euo pipefail
 
 echo "=========================================================="
 echo "   Automatización de Autoridad Certificadora (CA)         "
 echo "=========================================================="
 
-# Consultar valores variables al usuario
-read -r -p "Ruta base para la CA (ej. /home/administrator/ca): " CA_DIR
-read -r -p "Código de País (2 letras, ej. CR): " VAL_C
-read -r -p "Estado o Provincia (ej. Alajuela): " VAL_ST
-read -r -p "Localidad (ej. Alajuela): " VAL_L
-read -r -p "Nombre de la Organización (ej. xeon.cr): " VAL_O
-read -r -p "Nombre Común de la CA (ej. delta-ca): " VAL_CN
+log_info () {
 
-echo "Creando estructura de directorios..."
-mkdir -p "$CA_DIR"/certs "$CA_DIR"/newcerts "$CA_DIR"/private
-chmod 700 "$CA_DIR"/private
-touch "$CA_DIR"/index
-echo 1000 > "$CA_DIR"/serial
+  echo -e "\n\e[32m[INFO]\e[0m $1"
 
-echo "Generando archivo de configuración root-ca.conf..."
+}
+
+verificar_dependencias() {
+
+  log_info "Verificando dependencias del sistema..."
+  
+  if ! command -v openssl &> /dev/null; then
+
+    echo -e "\e[31m[ERROR]\e[0m OpenSSL no está instalado en este sistema."
+    echo "Por favor, instálalo ejecutando: sudo apt-get install openssl"
+    exit 1
+
+  fi
+  
+}
+
+recoleccion_variables() {
+
+  log_info "Recolección de variables para la CA..."
+  # Consultar valores variables al usuario
+  read -r -p "Ruta base para la CA (ej. /home/administrator/ca): " CA_DIR
+  read -r -p "Código de País (2 letras, ej. CR): " VAL_C
+  read -r -p "Estado o Provincia (ej. Alajuela): " VAL_ST
+  read -r -p "Localidad (ej. Alajuela): " VAL_L
+  read -r -p "Nombre de la Organización (ej. xeon.cr): " VAL_O
+  read -r -p "Nombre Común de la CA (ej. delta-ca): " VAL_CN
+  
+  if [[ -z "$CA_DIR" || -z "$VAL_CN" ]]; then
+
+    echo -e "\e[31m[ERROR]\e[0m La ruta de la CA y el Nombre Común son obligatorios."
+    exit 1
+
+  fi
+
+}
+
+estructura_directorios() {
+
+  log_info "Creando estructura de directorios para la CA..."
+  mkdir -p "$CA_DIR"/certs "$CA_DIR"/newcerts "$CA_DIR"/private
+  chmod 700 "$CA_DIR"/private
+  touch "$CA_DIR"/index
+
+  if [ ! -f "$CA_DIR/serial" ]; then
+
+    echo 1000 > "$CA_DIR/serial"
+
+  fi
+
+}
+
+generar_configuracion_ca() {
+
+  log_info "Generando archivo de configuración root-ca.conf..."
 cat <<EOF > "$CA_DIR/root-ca.conf"
 [ ca ]
 default_ca = CA_default
@@ -99,16 +149,25 @@ keyUsage = critical, digitalSignature, keyEncipherment
 extendedKeyUsage  = serverAuth
 EOF
 
-echo "Generando llave privada de la CA..."
-openssl genrsa -out "$CA_DIR/private/${VAL_CN}.key" 4096
+}
 
-echo "Generando certificado Raíz de la CA..."
-openssl req -config "$CA_DIR/root-ca.conf" -key "$CA_DIR/private/${VAL_CN}.key" \
+generar_llave_y_certificado_ca() {
+
+  log_info "Generando llave privada y certificado raíz de la CA..."
+  openssl genrsa -out "$CA_DIR/private/${VAL_CN}.key" 4096
+  chmod 600 "$CA_DIR/private/${VAL_CN}.key"
+  log_info "Generando certificado Raíz de la CA..."
+  openssl req -config "$CA_DIR/root-ca.conf" -key "$CA_DIR/private/${VAL_CN}.key" \
   -new -x509 -days 3650 -sha256 -extensions v3_ca \
   -out "$CA_DIR/certs/${VAL_CN}.crt" -subj "/C=$VAL_C/ST=$VAL_ST/L=$VAL_L/O=$VAL_O/CN=$VAL_CN"
+  
+}
 
-echo "Generando plantilla para clientes (template-csr.conf)..."
-cat <<EOF > "$CA_DIR/template-csr.conf"
+generar_plantilla_certificado() {
+
+  log_info "Generando plantilla para clientes (template-csr.conf)..."
+  cat <<EOF > "$CA_DIR/template-csr.conf"
+#
 [ req ]
 default_bits       = 2048
 distinguished_name = req_distinguished_name
@@ -188,12 +247,26 @@ IP.1  = 192.168.1.X
 # 4. Generar formato PEM (Unificar llave y certificado para Squid Proxy, HAProxy, etc.):
 # cat certs/SERVIDOR.crt SERVIDOR.key > certs/SERVIDOR.pem
 EOF
+}
 
-echo "=========================================================="
-echo "¡Configuración completada exitosamente!"
-echo "Archivos generados:"
-echo " - CA Config: $CA_DIR/root-ca.conf"
-echo " - CA Key:    $CA_DIR/private/${VAL_CN}.key"
-echo " - CA Cert:   $CA_DIR/certs/${VAL_CN}.crt"
-echo " - Template:  $CA_DIR/template-csr.conf"
-echo "=========================================================="
+mensaje_final() {
+
+  log_info "Proceso de configuración de la CA completado."
+  echo "=========================================================="
+  echo "¡Configuración completada exitosamente!"
+  echo "Archivos generados:"
+  echo " - CA Config: $CA_DIR/root-ca.conf"
+  echo " - CA Key:    $CA_DIR/private/${VAL_CN}.key"
+  echo " - CA Cert:   $CA_DIR/certs/${VAL_CN}.crt"
+  echo " - Template:  $CA_DIR/template-csr.conf"
+  echo "=========================================================="
+
+}
+
+verificar_dependencias
+recoleccion_variables
+estructura_directorios
+generar_configuracion_ca
+generar_llave_y_certificado_ca
+generar_plantilla_certificado
+mensaje_final

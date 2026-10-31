@@ -1,24 +1,53 @@
 #!/bin/bash
-set -e
+# ==============================================================================
+# Autor: Daril Arias
+# Fecha: Octubre 2026
+# Propósito: Instalación y configuración automatizada del Cliente Bacula (FD)
+# ==============================================================================
 
-#!/bin/bash
-set -e
+set -euo pipefail
 
-# 1. Variables
-DIRECTOR_NAME="bacula-dir"
-CLIENT_NAME="$(hostname)-fd"
+log_info() {
+  echo -e "\e[32m[INFO]\e[0m $1"
+}
 
-# Solicitar la contraseña de forma segura (no se mostrará en pantalla)
-read -r -s -p "Ingrese la contraseña para Bacula Director: " BACULA_PASSWORD
-echo "" # Salto de línea estético tras presionar Enter
+log_error() {
+  echo -e "\e[31m[ERROR]\e[0m $1"
+}
 
-# 2. Instalación de paquetes mínimos (cliente solamente)
-apt update && apt install -y bacula-fd
+verificar_privilegios() {
+  if [[ $EUID -ne 0 ]]; then
+    log_error "Este script requiere privilegios de administrador. Ejecútalo como root o usando sudo."
+    exit 1
+  fi
+}
 
-# 3. Respaldar y Reescribir Configuración
-cp /etc/bacula/bacula-fd.conf /etc/bacula/bacula-fd.conf.bak 2>/dev/null || true
+recoleccion_variables() {
+  log_info "Configuración de Variables"
+  DIRECTOR_NAME="bacula-dir"
+  CLIENT_NAME="$(hostname)-fd"
+  
+  read -r -s -p "Ingrese la contraseña para Bacula Director: " BACULA_PASSWORD
+  echo "" # Salto de línea estético tras presionar Enter
 
-cat << EOF > /etc/bacula/bacula-fd.conf
+  if [[ -z "$BACULA_PASSWORD" ]]; then
+    log_error "La contraseña no puede estar vacía."
+    exit 1
+  fi
+}
+
+instalar_paquetes() {
+  log_info "Actualizando e instalando bacula-fd..."
+  #export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y bacula-fd
+}
+
+configurar_bacula_fd() {
+  log_info "Configurando el cliente Bacula (/etc/bacula/bacula-fd.conf)..."
+  cp /etc/bacula/bacula-fd.conf /etc/bacula/bacula-fd.conf.bak 2>/dev/null || true
+
+  cat << EOF > /etc/bacula/bacula-fd.conf
 FileDaemon {
   Name = ${CLIENT_NAME}
   FDport = 9102
@@ -44,14 +73,35 @@ Messages {
   director = ${DIRECTOR_NAME} = all, !skipped, !restored, !verified, !saved
 }
 EOF
+}
 
-# 4. Ajustar Firewall (si aplica ufw)
-if command -v ufw > /dev/null; then
-    ufw allow 9102/tcp
-fi
+configurar_firewall() {
+  log_info "Ajustando Firewall (ufw)..."
+  if command -v ufw > /dev/null; then
+      ufw allow 9102/tcp
+  else
+      log_info "UFW no está instalado, omitiendo regla de firewall..."
+  fi
+}
 
-# 5. Reiniciar y verificar el servicio
-systemctl restart bacula-fd
-systemctl enable bacula-fd
-systemctl status bacula-fd --no-pager
+reiniciar_servicios() {
+  log_info "Reiniciando y habilitando bacula-fd..."
+  systemctl restart bacula-fd
+  systemctl enable bacula-fd
+  
+  echo -e "\n=========================================================="
+  echo "¡Configuración del Cliente Bacula completada exitosamente!"
+  echo "Nombre del cliente configurado: $CLIENT_NAME"
+  echo "=========================================================="
+  systemctl status bacula-fd --no-pager
+}
 
+# ==============================================================================
+# EJECUCIÓN PRINCIPAL
+# ============================================================================== 
+verificar_privilegios
+recoleccion_variables
+instalar_paquetes
+configurar_bacula_fd
+configurar_firewall
+reiniciar_servicios

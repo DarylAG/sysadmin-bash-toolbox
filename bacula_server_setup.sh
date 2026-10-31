@@ -1,38 +1,108 @@
 #!/bin/bash
+# ==============================================================================
+# Autor: Daril Arias
+# Fecha: Octubre 2026
+# Propósito: Instalación y configuración automatizada de Bacula Server 
+#            (Director, SD, FD), MariaDB y Webmin.
+# ==============================================================================
 
-set -e
+set -euo pipefail
 
-# 1. Lectura de variables dinámicas
-read -r -p "Ingrese la IP del servidor (ej: 192.168.106.1): " SERVER_IP
-read -r -s -p "Ingrese la contraseña para Bacula/MySQL: " BACULA_PASSWORD
+log_info() {
 
-if [ -z "$SERVER_IP" ] || [ -z "$BACULA_PASSWORD" ]; then
-  echo "Error: La IP y la contraseña son obligatorias."
-  exit 1
-fi
+  echo -e "\n\e[32m[INFO]\e[0m $1"
 
-# 2. Actualización del sistema e instalación de dependencias base
-apt update && apt upgrade -y
-apt install apache2 mariadb-server mariadb-client php -y
+}
 
-# 3. Instalación de paquetes Bacula sin interrupciones manuales excesivas
-apt install bacula bacula-client bacula-common-mysql bacula-director-mysql bacula-sd bacula-server bacula-tray-monitor -y
+log_error() {
 
-# 4. Instalación de dependencias y Webmin
-apt install perl libnet-ssleay-perl openssl libauthen-pam-perl libpam-runtime libio-pty-perl apt-show-versions libdbd-mysql-perl wget -y
+  echo -e "\n\e[31m[ERROR]\e[0m $1"
 
-cd /tmp
-wget -q https://sourceforge.net/projects/webadmin/files/webmin/2.670/webmin_2.670_all.deb -O webmin_2.670_all.deb
-dpkg -i webmin_2.670_all.deb || apt-get install -f -y
+}
 
-# 5. Creación y preparación del directorio de respaldos
-mkdir -p /copias
-chmod 777 /copias
+verificar_privilegios() {
 
-# 6. Configuración de /etc/bacula/bacula-dir.conf
-cp /etc/bacula/bacula-dir.conf /etc/bacula/bacula-dir.conf.bak 2>/dev/null || true
+  log_info "Verificando privilegios de administrador..."
+  if [[ $EUID -ne 0 ]]; then
+    log_error "Este script requiere privilegios de administrador. Ejecútalo como root o usando sudo."
+    exit 1
+  fi
 
-cat << EOF > /etc/bacula/bacula-dir.conf
+}
+
+# ==============================================================================
+# 1. RECOLECCIÓN DE DATOS
+# ==============================================================================
+# BASH: 'read' captura la entrada del usuario. 
+# -r evita que las barras invertidas (\) actúen como caracteres de escape.
+# -p muestra el mensaje en pantalla.
+# -s oculta lo que el usuario escribe (ideal para contraseñas).
+
+recoleccion_variables() {
+
+  log_info "Recolección de variables dinámicas..."
+  read -r -p "Ingrese la IP del servidor (ej: 192.168.106.1): " SERVER_IP
+  read -r -s -p "Ingrese la contraseña para Bacula/MySQL: " BACULA_PASSWORD
+
+
+  if [ -z "$SERVER_IP" ] || [ -z "$BACULA_PASSWORD" ]; then
+
+    log_error "Error: La IP y la contraseña son obligatorias."
+    exit 1
+
+  fi
+  
+}
+
+# ==============================================================================
+# 2. INSTALACIÓN DE DEPENDENCIAS Y SERVICIOS BASE
+# ==============================================================================
+instalacion_dependencias() {
+
+  # SERVICIO (Bacula): El ecosistema de Bacula se divide en varios demonios:
+  # - Director (bacula-dir): El cerebro. Controla las tareas y catálogos. 
+  # - Storage (bacula-sd): Gestiona el almacenamiento físico (discos, cintas).
+  # - File (bacula-fd): El cliente que se instala en la máquina a respaldar.
+  # - Console (bconsole): La herramienta para interactuar con el Director.
+
+  log_info "Actualizando repositorios e instalando dependencias..."
+  apt update && apt upgrade -y
+  apt install apache2 mariadb-server mariadb-client php -y
+  apt install bacula bacula-client bacula-common-mysql bacula-director-mysql bacula-sd bacula-server bacula-tray-monitor -y
+  apt install perl libnet-ssleay-perl openssl libauthen-pam-perl libpam-runtime libio-pty-perl apt-show-versions libdbd-mysql-perl wget -y
+
+
+  # ==============================================================================
+  # 4. INSTALACIÓN DE WEBMIN (INTERFAZ GRÁFICA)
+  # ==============================================================================
+  log_info "Instalando Webmin..."
+  cd /tmp
+  wget -q https://sourceforge.net/projects/webadmin/files/webmin/2.670/webmin_2.670_all.deb -O webmin_2.670_all.deb
+  dpkg -i webmin_2.670_all.deb || apt-get install -f -y
+
+}
+
+# ==============================================================================
+# 5. PREPARACIÓN DEL DIRECTORIO DE RESPALDOS
+# ==============================================================================
+preparacion_directorio() {
+  
+  log_info "Preparando directorio de respaldos" 
+  mkdir -p /copias
+  chmod 777 /copias
+
+}
+
+# ==============================================================================
+# 6. CONFIGURACIÓN DE BACULA (DIRECTOR, STORAGE Y FILE DAEMON)
+# ==============================================================================
+# BASH: Redirigimos errores (2>/dev/null) si el archivo original no existe, 
+# y '|| true' evita que el script se detenga por el 'set -e'.
+configurar_bacula_dir () {
+  
+  log_info "Configurando Bacula Director..."
+  cp /etc/bacula/bacula-dir.conf /etc/bacula/bacula-dir.conf.bak 2>/dev/null || true
+  cat << EOF > /etc/bacula/bacula-dir.conf
 Director {
   Name = bacula-dir
   DIRport = 9101
@@ -205,10 +275,16 @@ Console {
 }
 EOF
 
-# 7. Configuración de /etc/bacula/bacula-sd.conf
-cp /etc/bacula/bacula-sd.conf /etc/bacula/bacula-sd.conf.bak 2>/dev/null || true
+}
 
-cat << EOF > /etc/bacula/bacula-sd.conf
+# ==============================================================================
+# 7. CONFIGURACIÓN DE BACULA (STORAGE DAEMON)
+# ==============================================================================
+configurar_bacula_sd () {
+  
+  log_info "Configurando Bacula Storage Daemon..."
+  cp /etc/bacula/bacula-sd.conf /etc/bacula/bacula-sd.conf.bak 2>/dev/null || true
+  cat << EOF > /etc/bacula/bacula-sd.conf
 Storage {
   Name = bacula-sd
   SDPort = 9103
@@ -248,10 +324,18 @@ Messages {
 }
 EOF
 
-# 8. Configuración de /etc/bacula/bacula-fd.conf
-cp /etc/bacula/bacula-fd.conf /etc/bacula/bacula-fd.conf.bak 2>/dev/null || true
+}
 
-cat << EOF > /etc/bacula/bacula-fd.conf
+# ==============================================================================
+# 8. Configuración de /etc/bacula/bacula-fd.conf
+# ==============================================================================
+configurar_bacula_fd () {
+  
+  log_info "Configurando Bacula File Daemon..."
+
+  cp /etc/bacula/bacula-fd.conf /etc/bacula/bacula-fd.conf.bak 2>/dev/null || true
+
+  cat << EOF > /etc/bacula/bacula-fd.conf
 Director {
   Name = bacula-dir
   Password = "${BACULA_PASSWORD}"
@@ -277,12 +361,20 @@ Messages {
   Name = Standard
   director = bacula-dir = all, !skipped, !restored, !verified, !saved
 }
+
 EOF
 
-# 9. Configuración de /etc/bacula/bconsole.conf
-cp /etc/bacula/bconsole.conf /etc/bacula/bconsole.conf.bak 2>/dev/null || true
+}
 
-cat << EOF > /etc/bacula/bconsole.conf
+# ==============================================================================
+# 9. Configuración de /etc/bacula/bconsole.conf
+# ==============================================================================
+configurar_bacula_bconsole () {
+  
+  log_info "Configurando Bacula Console..."
+  cp /etc/bacula/bconsole.conf /etc/bacula/bconsole.conf.bak 2>/dev/null || true
+
+  cat << EOF > /etc/bacula/bconsole.conf
 Director {
   Name = bacula-dir
   DIRport = 9101
@@ -291,6 +383,30 @@ Director {
 }
 EOF
 
-# 10. Reiniciar y verificar servicios por orden
-systemctl restart bacula-sd bacula-dir bacula-fd
-systemctl status bacula-sd bacula-dir bacula-fd --no-pager
+}
+
+# ==============================================================================
+# 10. Reiniciar y verificar servicios 
+# ==============================================================================
+reiniciar_verificar_servicios () {
+  
+  log_info "Reiniciando y verificando servicios de Bacula..."
+  systemctl restart bacula-sd bacula-dir bacula-fd
+  systemctl status bacula-sd bacula-dir bacula-fd --no-pager
+
+}
+
+# ==============================================================================
+# 11. Ejecución de funciones principales
+# ==============================================================================
+verificar_privilegios
+recoleccion_variables
+instalacion_dependencias
+preparacion_directorio
+configurar_bacula_dir
+configurar_bacula_sd
+configurar_bacula_fd
+configurar_bacula_bconsole
+reiniciar_verificar_servicios
+log_info "Instalación y configuración de Bacula Server completada exitosamente."
+log_info "Accede a Webmin en: https://${SERVER_IP}:10000"
