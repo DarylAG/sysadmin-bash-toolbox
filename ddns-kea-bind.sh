@@ -1,40 +1,38 @@
 #!/bin/bash
 # ==============================================================================
-# Automatización de Infraestructura DDNS (BIND9 + Kea DHCP) con Instalación
-# ==============================================================================
 # Autor: Daril Arias
-# Fecha: 10/2026
-# Descripción: Automatización del despliegue de un servidor DDNS para los 
-# laboratorios de telemática en el Instituto Nacional de Aprendizaje (INA).
-# Estándar:  Modelo de seguridad y documentación pedagógica (INA).
+# Fecha: Octubre 2026
+# Propósito: Automatización de Infraestructura DDNS (BIND9 + Kea DHCP)
+# Estándar:  Modelo de arquitectura, seguridad y relaciones cruzadas.
 # ==============================================================================
 
+# SEGURIDAD: Abortar la ejecución ante variables no declaradas o errores ocultos 
+# evita despliegues parciales que podrían comprometer la resolución de nombres o el enrutamiento.
+set -euo pipefail
+
 log_info() {
-  # BASH: \e[32m aplica color verde al texto para los mensajes de información.
   echo -e "\e[32m[INFO]\e[0m $1"
 }
 
 log_error() {
-  # BASH: \e[31m aplica color rojo al texto para los mensajes de error.
   echo -e "\e[31m[ERROR]\e[0m $1"
 }
 
-# Función para realizar copias de seguridad antes de modificar un archivo original
 backup_file() {
-    # BASH: 'local' restringe la variable al ámbito de esta función.
+    # SERVICIO: Garantiza la resiliencia de la configuración. Antes de inyectar 
+    # nuevos parámetros, se preserva el estado anterior para facilitar un rollback.
     local FILE=$1
     if [ -f "$FILE" ]; then
         local BACKUP_NAME
-        # BASH: $(date +%F) concatena la fecha actual (YYYY-MM-DD) al nombre del respaldo.
         BACKUP_NAME="${FILE}.bak_$(date +%F)"
         cp -a "$FILE" "$BACKUP_NAME"
         log_info "[Backup] Creado: $BACKUP_NAME"
     fi
 }
 
-# Validar ejecución con privilegios de superusuario (root)
+# SEGURIDAD: La instalación de demonios DNS/DHCP y la mutación de las interfaces 
+# de red requieren modificaciones críticas en el núcleo y servicios base.
 if [ "$EUID" -ne 0 ]; then
-  # BASH: $EUID es 0 solo si el script se ejecuta como root.
   log_error "Por favor, ejecuta este script como root o usando sudo."
   exit 1
 fi
@@ -46,8 +44,6 @@ fi
 recoleccion_variables() {  
     log_info "=== Fase 1: Configuración de Variables del Sistema DDNS ==="
     
-    # BASH: 'read -p' muestra el texto y guarda la entrada en la variable especificada.
-    # '-r' evita que las barras invertidas (\) actúen como caracteres de escape.
     read -r -p "Nombre del Dominio (ej. lab.local): " DOMINIO
     read -r -p "Hostname primario del DNS (ej. ns1): " HOSTNAME_PRIMARIO
     read -r -p "IP estática para el Servidor DNS/DHCP (ej. 192.168.1.10): " IP_SERVIDOR
@@ -68,10 +64,11 @@ recoleccion_variables() {
 instalacion_dependencias() {
     log_info "=== Fase 2: Instalación de Paquetes Requeridos ==="
     apt-get update
-    # SERVICIO: BIND9 actúa como el servidor DNS autoritativo.
+    
+    # SERVICIO: BIND9 actúa como el servidor DNS autoritativo del entorno.
     apt-get install -y bind9 bind9utils bind9-doc dnsutils curl apt-transport-https
     
-    # SERVICIO: Kea DHCP es el motor moderno que reemplaza al clásico isc-dhcp-server.
+    # SERVICIO: Kea DHCP es el motor de asignación dinámica que reemplaza al clásico isc-dhcp-server.
     curl -1sLf 'https://dl.cloudsmith.io/public/isc/kea-3-2/setup.deb.sh' | bash
     apt-get install -y isc-kea-dhcp4-server isc-kea-dhcp-ddns-server
 }
@@ -83,12 +80,10 @@ instalacion_dependencias() {
 configuracion_servicios() {
     log_info "=== Fase 3: Configurando BIND9 y Kea DHCP ==="
 
-    # 3.1 Opciones globales de BIND9 (Seguridad y resolución)
     backup_file "/etc/bind/named.conf.options"
     
-    # BASH: 'cat << EOF > archivo' inyecta un bloque multilinea interpretando variables ${}.
     cat << EOF > "/etc/bind/named.conf.options"
-// SEGURIDAD: Definir subredes (ACL) con permisos para consultar este DNS
+// SEGURIDAD: Definir subredes (ACL) con permisos explícitos para consultar este DNS
 acl trusted {
         localhost;
         localnets;
@@ -103,7 +98,7 @@ options {
         allow-query-cache { trusted; };
         allow-recursion { trusted; };
 
-        // Servidores raíz para resolución externa
+        // SERVICIO: Servidores raíz para resolución externa
         forwarders{
                 8.8.8.8;
                 8.8.4.4;
@@ -111,21 +106,22 @@ options {
         
         dnssec-validation auto;
         listen-on-v6 port 53 { ::1; };
-        // SERVICIO: El servidor escucha en su loopback y en su futura IP estática
+        
+        // SERVICIO: El servidor escucha en su loopback y en su IP estática asignada
         listen-on port 53 { 127.0.0.1; ${IP_SERVIDOR}; };
 };
 EOF
 
-    # 3.2 Declaración de Zonas DNS e integración de llave TSIG
     backup_file "/etc/bind/named.conf.local"
     cat << EOF > "/etc/bind/named.conf.local"
-# RELACIÓN CRUZADA: Importa la llave simétrica generada para autenticar a Kea
+# RELACIÓN CRUZADA: Importa la llave simétrica generada para autenticar al motor Kea
 include "/etc/bind/${NOMBRE_LLAVE_TSIG}.key";
 
 zone "${DOMINIO}" {
     type master;
     file "/var/lib/bind/db.${DOMINIO}";
-    # SEGURIDAD: 'update-policy' restringe quién puede modificar registros dinámicamente
+    # SEGURIDAD: 'update-policy' restringe quién (y sobre qué registros) puede 
+    # modificar la zona dinámicamente usando la llave TSIG.
     update-policy {
         grant ${NOMBRE_LLAVE_TSIG} wildcard *.${DOMINIO} A DHCID;
     };
@@ -140,7 +136,6 @@ zone "${ZONA_INVERSA_ARPA}.in-addr.arpa" {
 };
 EOF
 
-    # 3.3 Creación de archivos de zona (Directa)
     mkdir -p /var/lib/bind
     backup_file "/var/lib/bind/db.${DOMINIO}"
     cat << EOF > "/var/lib/bind/db.${DOMINIO}"
@@ -156,7 +151,6 @@ ${DOMINIO}.     IN SOA  ${HOSTNAME_PRIMARIO}.${DOMINIO}. admin.${DOMINIO}. (
 ${HOSTNAME_PRIMARIO}.${DOMINIO}.        A   ${IP_SERVIDOR}
 EOF
 
-    # 3.4 Creación de archivos de zona (Inversa)
     backup_file "/var/lib/bind/db.${ZONA_INVERSA_ARPA}"
     cat << EOF > "/var/lib/bind/db.${ZONA_INVERSA_ARPA}"
 \$TTL 604800    ; 1 week
@@ -171,7 +165,7 @@ ${ZONA_INVERSA_ARPA}.in-addr.arpa. IN SOA ${HOSTNAME_PRIMARIO}.${DOMINIO}. admin
 ${OCTETO_IP}.${ZONA_INVERSA_ARPA}.in-addr.arpa. PTR    ${HOSTNAME_PRIMARIO}.${DOMINIO}.
 EOF
 
-    # 3.5 Configuración del daemon principal de DHCP (Kea IPv4)
+    # SERVICIO: Configuración del daemon principal de DHCP (Kea IPv4)
     backup_file "/etc/kea/kea-dhcp4.conf"
     cat << EOF > "/etc/kea/kea-dhcp4.conf"
 {
@@ -209,7 +203,8 @@ EOF
 }
 EOF
 
-    # 3.6 Configuración del módulo de actualización DDNS de Kea
+    # RELACIÓN CRUZADA: Configuración del módulo D2 de Kea (dhcp-ddns), el cual 
+    # intercepta las asignaciones de DHCP y envía las actualizaciones DNS a BIND9.
     backup_file "/etc/kea/kea-dhcp-ddns.conf"
     cat << EOF > "/etc/kea/kea-dhcp-ddns.conf"
 {
@@ -251,15 +246,12 @@ EOF
 generar_llave_tsig() {
     log_info "=== Generando Llave TSIG y Ajustando Permisos ==="
     
-    # 1. Generar la llave criptográfica en BIND9
-    # SEGURIDAD: HMAC-SHA256 asegura un cifrado robusto para la firma de transacciones.
+    # SEGURIDAD: HMAC-SHA256 asegura un cifrado robusto para la firma de transacciones
+    # dinámicas entre DHCP y DNS, previniendo falsificación de registros.
     tsig-keygen -a HMAC-SHA256 "$NOMBRE_LLAVE_TSIG" > "/etc/bind/${NOMBRE_LLAVE_TSIG}.key"
 
-    # 2. Extraer limpiamente el secreto base64 a un archivo independiente para Kea
-    # BASH: 'awk' filtra el archivo de BIND9, busca la palabra 'secret' y extrae únicamente su valor.
     awk -F'"' '/secret/ {printf "%s", $2}' "/etc/bind/${NOMBRE_LLAVE_TSIG}.key" > "/etc/kea/${NOMBRE_LLAVE_TSIG}.secret"
 
-    # 3. Crear el archivo tsig-keys.json utilizando la directiva "secret-file" exigida por Kea
     cat << EOF > /etc/kea/tsig-keys.json
     "tsig-keys": [
         {
@@ -271,9 +263,8 @@ generar_llave_tsig() {
 
 EOF
 
-    # 4. Asignar propietarios y permisos restrictivos de seguridad (640)
     # SEGURIDAD: Los demonios (bind y _kea) solo deben poder leer los archivos de llaves. 
-    # El 640 evita lecturas no autorizadas de otros usuarios.
+    # La máscara 640 evita lecturas no autorizadas de otros usuarios o procesos del sistema.
     chown -R bind:bind /etc/bind/
     chown -R bind:bind /var/lib/bind/
     chmod 640 "/etc/bind/${NOMBRE_LLAVE_TSIG}.key"
@@ -293,10 +284,10 @@ EOF
 mutacion_sistema_operativo() {
     log_info "=== Fase 4: Configuración del Sistema Operativo ==="
 
-    # SERVICIO: Aplicar hostname en memoria sin necesidad de reiniciar inmediatamente.
+    # SERVICIO: Aplicar hostname en memoria para identificar el nodo sin reiniciar inmediatamente.
     hostnamectl set-hostname "${HOSTNAME_PRIMARIO}"
 
-    # RELACIÓN CRUZADA: Mapear FQDN local para que los servicios se identifiquen a sí mismos.
+    # RELACIÓN CRUZADA: Mapear FQDN local para que los servicios internos se resuelvan a sí mismos.
     backup_file "/etc/hosts"
     cat << EOF > "/etc/hosts"
     127.0.0.1       localhost
@@ -312,7 +303,7 @@ search ${DOMINIO}
 nameserver 127.0.0.1
 EOF
 
-    # SERVICIO: Transición del adaptador de red a configuración estática.
+    # SERVICIO: Transición del adaptador de red a configuración estática de cara al entorno de producción.
     backup_file "/etc/network/interfaces"
     cat << EOF > "/etc/network/interfaces"
 source /etc/network/interfaces.d/*
@@ -320,7 +311,6 @@ source /etc/network/interfaces.d/*
 auto lo
 iface lo inet loopback
 
-# Configuración estática que aplicará en el próximo arranque
 auto ${INTERFAZ_RED}
 iface ${INTERFAZ_RED} inet static
     address ${IP_SERVIDOR}
@@ -335,12 +325,12 @@ EOF
 validacion_habilitacion() {
     log_info "=== Fase 5: Validación y Cierre ==="
 
-    # SERVICIO: Validadores de sintaxis que evitan que el demonio falle por errores tipográficos.
+    # SERVICIO: Validadores de sintaxis estrictos. Previenen que los demonios fallen 
+    # durante el arranque debido a errores tipográficos en los archivos generados.
     named-checkconf /etc/bind/named.conf
     named-checkzone "${DOMINIO}" "/var/lib/bind/db.${DOMINIO}"
     kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
     
-    # BASH: Reinicia y programa ('enable') los servicios para que arranquen con el sistema.
     systemctl restart named isc-kea-dhcp4-server isc-kea-dhcp-ddns-server
     systemctl enable named isc-kea-dhcp4-server isc-kea-dhcp-ddns-server
 
@@ -356,13 +346,12 @@ validacion_habilitacion() {
     echo "activo, y estará listo para repartir direccionamiento en el laboratorio."
     echo "=================================================================="
 
-    # BASH: 'sleep 10' pausa la ejecución 10 segundos antes del apagado seguro.
     sleep 10
     poweroff
 }
 
 # ==============================================================================
-# FASE 5: Ejecución de todas las fases en orden
+# EJECUCIÓN PRINCIPAL
 # ==============================================================================
 recoleccion_variables
 instalacion_dependencias
