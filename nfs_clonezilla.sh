@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Autor: [Tu Nombre/Administrador]
+# Autor: Daril Arias
 # Fecha: Octubre 2026
 # Propósito: Automatización del Servidor NFS (Almacenamiento para Clonezilla)
 # Estándar:  Modelo de arquitectura, seguridad y relaciones cruzadas.
