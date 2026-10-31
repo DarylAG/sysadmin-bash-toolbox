@@ -35,8 +35,6 @@ apt install squid iptables squid-openssl -y
 
 Para que Squid intercepte tráfico cifrado (HTTPS), debe actuar como una Autoridad Certificadora (CA) para generar certificados dinámicos. Es obligatorio combinar el certificado público y la clave privada sin contraseña en un único archivo `.pem`.
 
-MD
-
 1. Posiciónate en el directorio de certificados de Squid:
 ```bash
 mkdir -p /etc/squid/certs
