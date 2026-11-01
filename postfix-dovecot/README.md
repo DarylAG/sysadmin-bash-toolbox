@@ -65,8 +65,15 @@ apt update && apt upgrade -y
 
 **Acción:** Importar los certificados TLS/SSL generados desde el servidor CA y asignar los permisos restrictivos necesarios.
 
-Copiar certificados desde el servidor CA
+*Opción A: Copia desde rutas locales*
 ```bash
+cp /ruta/local/<HOSTNAME_CORREO>.crt /etc/ssl/certs/<HOSTNAME_CORREO>.crt
+cp /ruta/local/<HOSTNAME_CORREO>.key /etc/ssl/private/<HOSTNAME_CORREO>.key
+cp /ruta/local/ca-root.crt /etc/ssl/certs/ca-root.crt
+```
+*Opción B: Transferencia remota desde el servidor CA*
+
+```Bash
 scp <CA_USER>@<CA_HOST>:/ruta/ca/certs/<HOSTNAME_CORREO>.crt /etc/ssl/certs/<HOSTNAME_CORREO>.crt
 scp <CA_USER>@<CA_HOST>:/ruta/ca/private/<HOSTNAME_CORREO>.key /etc/ssl/private/<HOSTNAME_CORREO>.key
 scp <CA_USER>@<CA_HOST>:/ruta/ca/certs/ca-root.crt /etc/ssl/certs/ca-root.crt
@@ -86,6 +93,11 @@ apt update && apt install -y postfix mailutils
 ```
 
 **Acción:** Respaldar y optimizar la configuración principal (`main.cf`).
+```bash
+cp /etc/postfix/main.cf /etc/postfix/main.cf.bak
+nano /etc/postfix/main.cf
+```
+
 ```bash
 # Nivel de compatibilidad y dominios
 compatibility_level = 3.9

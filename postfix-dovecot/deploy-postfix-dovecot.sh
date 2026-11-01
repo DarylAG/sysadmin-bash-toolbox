@@ -307,8 +307,6 @@ habilitar_servicios() {
   log_info "Reiniciando y habilitando servicios Postfix y Dovecot"
   systemctl restart postfix dovecot 
   systemctl enable postfix dovecot
-  systemctl restart postfix dovecot 
-  systemctl enable postfix dovecot
   systemctl status postfix dovecot
 }
 

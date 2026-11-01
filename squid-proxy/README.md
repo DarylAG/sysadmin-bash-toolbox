@@ -10,11 +10,12 @@ Antes de iniciar, identifica y sustituye las siguientes variables en los comando
 
 - `<IP_PROXY>`: Dirección IP asignada a la interfaz interna del servidor Squid.
 
-- `<PUERTO_HTTP>`: Puerto de escucha base e intercepción HTTP, por defecto `3128`.
+- `<PUERTO_DIRECTO>`: Puerto de escucha para peticiones directas, por defecto `3127`.
 
-- `<PUERTO_HTTPS>`: Puerto de intercepción HTTPS, por defecto `3129`.
+- `<PUERTO_HTTP_INTERCEPT>`: Puerto de intercepción transparente HTTP, por defecto `3128`.
 
-- `<NOMBRE_CA>`: Nombre base de los archivos de tu Autoridad Certificadora (ej. `ca-interna`).
+- `<PUERTO_HTTPS_INTERCEPT>`: Puerto de intercepción transparente HTTPS, por defecto `3129`
+
 
 ## Fase 1: Preparación del Sistema e Instalación
 
@@ -43,14 +44,14 @@ cd /etc/squid/certs/
 
 2. Genera el archivo `.pem` concatenando el certificado (`.crt`) y la llave privada (`.key`):
 ```bash
-cat <NOMBRE_CA>.crt <NOMBRE_CA>.key > <NOMBRE_CA>.pem
+cat ca.crt ca.key > /etc/squid/certs/squid.pem
 ```
 
 3. Ajusta los permisos de seguridad (crítico para Squid):
 ```bash
 chown -R proxy:proxy /etc/squid/certs
 chmod 755 /etc/squid/certs
-chmod 600 /etc/squid/certs/<NOMBRE_CA>.pem
+chmod 600 /etc/squid/certs/squid.pem
 ```
 
 ## Fase 3: Inicialización de la Base de Datos SSL
@@ -106,14 +107,14 @@ http_access deny all
 # ----------------------------------------------------------------------
 # PUERTOS Y SSL BUMPING (PROXY TRANSPARENTE)
 # ----------------------------------------------------------------------
-# Puerto base para Squid 6+ (evita advertencias)
-http_port <PUERTO_HTTP>
+# Puerto directo
+http_port <PUERTO_DIRECTO>
 
 # Intercepción HTTP transparente
 http_port <PUERTO_HTTP_INTERCEPT> intercept
 
-# Intercepción HTTPS transparente con certificados dinámicos
-https_port <PUERTO_HTTPS> intercept ssl-bump generate-host-certificates=on dynamic_cert_mem_cache_size=4MB cert=/etc/squid/certs/<NOMBRE_CA>.pem
+# Intercepción HTTPS transparente con inspección de certificados
+https_port <PUERTO_HTTPS_INTERCEPT> intercept ssl-bump generate-host-certificates=on dynamic_cert_mem_cache_size=4MB cert=/etc/squid/certs/squid.pem
 
 # Programa de gestión de base de datos SSL
 sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
@@ -138,8 +139,8 @@ Para que el modo transparente funcione, debes redirigir el tráfico web de los c
 
 Aplica las siguientes reglas NAT:
 ```bash
-iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port <PUERTO_HTTP>
-iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port <PUERTO_HTTPS>
+iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port <PUERTO_HTTP_INTERCEPT>
+iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port <PUERTO_HTTPS_INTERCEPT>
 ```
 
 ## Gestión, Verificación y Troubleshooting

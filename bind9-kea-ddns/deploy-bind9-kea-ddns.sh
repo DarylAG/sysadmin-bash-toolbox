@@ -265,16 +265,14 @@ EOF
 
     # SEGURIDAD: Los demonios (bind y _kea) solo deben poder leer los archivos de llaves. 
     # La máscara 640 evita lecturas no autorizadas de otros usuarios o procesos del sistema.
+# SEGURIDAD: Permisos restrictivos para que solo los demonios correspondientes lean las llaves.
     chown -R bind:bind /etc/bind/
     chown -R bind:bind /var/lib/bind/
     chmod 640 "/etc/bind/${NOMBRE_LLAVE_TSIG}.key"
 
-    chown _kea:_kea /etc/kea/tsig-keys.json "/etc/kea/${NOMBRE_LLAVE_TSIG}.secret"
-    chmod 640 /etc/kea/tsig-keys.json "/etc/kea/${NOMBRE_LLAVE_TSIG}.secret"
     chown -R _kea:_kea /etc/kea/
-
-    chown _kea:_kea /etc/kea/tsig-keys.json
-    chmod 640 "/etc/kea/tsig-keys.json"
+    chmod 640 /etc/kea/tsig-keys.json "/etc/kea/${NOMBRE_LLAVE_TSIG}.secret"
+    
 }
 
 # ==============================================================================

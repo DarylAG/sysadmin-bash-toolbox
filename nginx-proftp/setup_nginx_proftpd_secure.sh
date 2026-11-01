@@ -8,7 +8,7 @@
 
 # SEGURIDAD: Abortar la ejecución ante fallos en comandos o tuberías (pipelines)
 # evita despliegues parciales que podrían dejar los servicios en un estado vulnerable.
-set -eo pipefail
+set -euo pipefail
 
 log_info() {
   echo -e "\e[32m[INFO]\e[0m $1"
@@ -87,6 +87,7 @@ instalar_paquetes() {
 # FASE 3: DESPLIEGUE Y CONFIGURACIÓN DE NGINX
 # ==============================================================================
 configurar_nginx() {
+
     mkdir -p "$RUTA_RAIZ_WEB/html"
     log_info "Creando archivo index.html de prueba..."
     cat <<EOF > "$RUTA_RAIZ_WEB/html/index.html"
@@ -126,7 +127,9 @@ EOF
     chown root:root "/etc/ssl/certs/$DEST_CERT_SSL"
     chmod 644 "/etc/ssl/certs/$DEST_CERT_SSL"
 
+
     log_info "Creando Virtual Host para Nginx..."
+    backup_file "/etc/nginx/sites-available/$DOMINIO_WEB"
     cat <<EOF > "/etc/nginx/sites-available/$DOMINIO_WEB"
 # SERVICIO: Redirección obligatoria (301) en el puerto 80 para garantizar que 
 # todas las conexiones transiten por el túnel cifrado.
@@ -188,6 +191,7 @@ usuario_y_permisos() {
 # ==============================================================================
 configurar_proftpd() {
     log_info "Configurando proftpd.conf..."
+    backup_file "/etc/proftpd/proftpd.conf"
     cat <<EOF > /etc/proftpd/proftpd.conf
 Include /etc/proftpd/modules.conf
 UseIPv6 on
@@ -241,7 +245,8 @@ Include /etc/proftpd/tls.conf
 
 Include /etc/proftpd/conf.d/
 EOF
-
+    
+    backup_file "/etc/proftpd/tls.conf"
     log_info "Configurando tls.conf de ProFTPD..."
     cat <<EOF > /etc/proftpd/tls.conf
 <IfModule mod_tls.c>
