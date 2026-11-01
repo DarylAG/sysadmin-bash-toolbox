@@ -68,7 +68,7 @@ sysadmin-bash-toolbox/
 | **`clonezilla-nfs`**     | `deploy-nfs-clonezilla.sh`     | Almacenamiento en red NFS (Preparado para integración con DRBL / Clonezilla).                        | ⏳ En desarrollo |
 | **`squid-proxy`**     | `deploy-squid-proxy.sh`     | Proxy transparente Squid con inspección SSL (SSL Bumping), base de datos `ssl_db` y reglas Iptables. | 🟢 Completado   |
 | **`postfix-dovecot`** | `deploy-postfix-dovecot.sh` | Servidor de correo interno con Postfix (MTA), Dovecot (IMAP/POP3), SASL y Submission cifrado (587).  | 🟢 Completado   |
-| **`pki-ca`**          | `deploy-pki-ca.sh`          | Infraestructura de clave pública (PKI) y Autoridad Certificadora (CA) local con OpenSSL.             | 🟡 En revisión  |
+| **`pki-ca`**          | `deploy-pki-ca.sh`          | Infraestructura de clave pública (PKI) y Autoridad Certificadora (CA) local con OpenSSL.             | 🟢 Completado |
 
 ---
 ## Estándares de Diseño y Seguridad
