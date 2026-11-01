@@ -43,7 +43,7 @@ sysadmin-bash-toolbox/
     │   ├── deploy-nginx-proftpd.sh
     │   └── README.md
     ├── clonezilla-nfs/
-    │   ├── deploy-nfs-storage.sh
+    │   ├── deploy-nfs-clonezilla.sh
     │   └── README.md
     ├── squid-proxy/
     │   ├── deploy-squid-proxy.sh
