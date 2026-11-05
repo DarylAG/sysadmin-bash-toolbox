@@ -61,8 +61,8 @@ sysadmin-bash-toolbox/
 
 | **Laboratorio**       | **Script de Despliegue**    | **Descripción Técnica**                                                                              | **Estado**      |
 | --------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------- | --------------- |
-| **`bacula-server`**   | `deploy-bacula-server.sh`   | Servidor de respaldos Bacula (Director, Storage Daemon) con MariaDB y Webmin.                        | 🟡 En revisión  |
-| **`bacula-server`**   | `deploy-bacula-client.sh`   | Agente cliente de respaldos Bacula (File Daemon) y llaves de autenticación.                          | 🟡 En revisión  |
+| **`bacula-server`**   | `deploy-bacula-server.sh`   | Servidor de respaldos Bacula (Director, Storage Daemon) con MariaDB y Webmin.                        | ⏳ En desarrollo  |
+| **`bacula-server`**   | `deploy-bacula-client.sh`   | Agente cliente de respaldos Bacula (File Daemon) y llaves de autenticación.                          | ⏳ En desarrollo  |
 | **`ddns-bind9-kea`**  | `deploy-bind9-kea-ddns.sh`  | Integración de Kea DHCP con BIND9 mediante llaves TSIG (HMAC-SHA256) para DDNS.                      | 🟢 Completado   |
 | **`nginx-proftpd`**   | `deploy-nginx-proftpd.sh`   | Servidor Web Nginx (HTTPS forzado) y FTP Seguro (ProFTPD con FTPS explícito y Chroot).               | 🟢 Completado   |
 | **`clonezilla-nfs`**     | `deploy-nfs-clonezilla.sh`     | Almacenamiento en red NFS (Preparado para integración con DRBL / Clonezilla).                        | ⏳ En desarrollo |
